@@ -33,7 +33,7 @@ app.get('/health', (req, res) => {
 let socket = null;
 let qrCode = null;
 let isConnected = false;
-let authFolder = '/tmp/whatsapp-auth'; // Dossier temporaire sur Render
+let authFolder = '/tmp/whatsapp-auth';
 
 // S'assurer que le dossier auth existe
 if (!fs.existsSync(authFolder)) {
@@ -62,12 +62,10 @@ app.post('/api/start', async (req, res) => {
         const { state, saveCreds } = await useMultiFileAuthState(authFolder);
         console.log('✅ Auth state chargé');
 
+        // Configuration corrigée sans logger problématique
         socket = makeWASocket({
             auth: state,
-            printQRInTerminal: true,
-            logger: {
-                level: 'debug'
-            }
+            // Supprimer printQRInTerminal et logger problématiques
         });
 
         socket.ev.on('connection.update', (update) => {
@@ -77,7 +75,11 @@ app.post('/api/start', async (req, res) => {
             if (qr) {
                 qrCode = qr;
                 console.log('📱 QR Code généré');
+                // Afficher le QR Code dans les logs
                 qrcode.generate(qr, { small: true });
+                
+                // Stocker le QR pour l'API
+                qrCode = qr;
             }
 
             if (connection === 'open') {
@@ -96,19 +98,14 @@ app.post('/api/start', async (req, res) => {
 
         socket.ev.on('creds.update', saveCreds);
 
-        // Timeout pour éviter les blocages
-        setTimeout(() => {
-            if (!isConnected && !qrCode) {
-                console.log('⏰ Timeout - Regénération du QR...');
-                socket.end();
-                socket = null;
-            }
-        }, 30000);
+        // Attendre un peu pour voir si un QR est généré
+        await delay(2000);
 
         res.json({ 
             success: true, 
             message: 'Connexion WhatsApp démarrée',
-            hasQR: !!qrCode
+            hasQR: !!qrCode,
+            qr: qrCode // Retourner le QR directement
         });
 
     } catch (error) {
