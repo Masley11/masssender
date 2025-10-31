@@ -1,12 +1,12 @@
 <?php
-// frontend/whatsapp/WhatsAppService.php
+// public/frontend/whatsapp/WhatsAppService.php
 
 class WhatsAppService {
     private $apiUrl;
     
     public function __construct() {
-        // Backend tourne sur le même conteneur
-        $this->apiUrl = 'http://localhost:3001';
+        // URL du backend sur Render
+        $this->apiUrl = $_ENV['BACKEND_URL'] ?? 'https://whatsapp-backend.onrender.com';
     }
     
     /**
@@ -89,7 +89,7 @@ class WhatsAppService {
      * @param int $timeout
      * @return array
      */
-    private function callAPI($endpoint, $method = 'GET', $data = null, $timeout = 10) {
+    private function callAPI($endpoint, $method = 'GET', $data = null, $timeout = 30) {
         $url = $this->apiUrl . $endpoint;
         
         $options = [
@@ -113,7 +113,7 @@ class WhatsAppService {
                 return [
                     'success' => false, 
                     'error' => 'Service WhatsApp indisponible',
-                    'details' => 'Impossible de contacter le serveur backend'
+                    'details' => 'Impossible de contacter le serveur backend: ' . $url
                 ];
             }
             

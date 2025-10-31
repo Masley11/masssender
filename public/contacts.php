@@ -2,8 +2,26 @@
 // contacts.php
 include('includes/header.php'); 
 
-// Connexion DB
-$db = new SQLite3('contacts.db');
+// Connexion DB - Version compatible Render
+if (getenv('RENDER')) {
+    // SQLite pour Render
+    $dbPath = __DIR__ . '/data/contacts.db';
+    $pdo = new PDO("sqlite:" . $dbPath);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} else {
+    // MySQL pour l'environnement local
+    $host = $_ENV['DB_HOST'] ?? 'localhost';
+    $dbname = $_ENV['DB_NAME'] ?? 'masssender';
+    $username = $_ENV['DB_USER'] ?? 'root';
+    $password = $_ENV['DB_PASS'] ?? '';
+    
+    try {
+        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    } catch (PDOException $e) {
+        die("Erreur de connexion : " . $e->getMessage());
+    }
+}
 ?>
 
 <h1>📇 Gestion des Contacts</h1>
@@ -12,11 +30,11 @@ $db = new SQLite3('contacts.db');
 <div class="dashboard">
     <div class="card">
         <h3>👥 Contacts total</h3>
-        <p style="font-size: 24px; margin: 0;"><?php echo getContactCount($db); ?></p>
+        <p style="font-size: 24px; margin: 0;"><?php echo getContactCount($pdo); ?></p>
     </div>
     <div class="card">
         <h3>✅ Consentements</h3>
-        <p style="font-size: 24px; margin: 0;"><?php echo getConsentCount($db); ?></p>
+        <p style="font-size: 24px; margin: 0;"><?php echo getConsentCount($pdo); ?></p>
     </div>
 </div>
 
@@ -54,7 +72,7 @@ $db = new SQLite3('contacts.db');
 <div class="card">
     <h3>📋 Liste des contacts</h3>
     
-    <?php if (getContactCount($db) > 0): ?>
+    <?php if (getContactCount($pdo) > 0): ?>
     <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
         <thead>
             <tr style="background: #f4f4f4;">
@@ -66,7 +84,7 @@ $db = new SQLite3('contacts.db');
             </tr>
         </thead>
         <tbody>
-            <?php displayContacts($db); ?>
+            <?php displayContacts($pdo); ?>
         </tbody>
     </table>
     <?php else: ?>
@@ -77,36 +95,36 @@ $db = new SQLite3('contacts.db');
 <?php
 // Traitement formulaire manuel
 if (isset($_POST['add_contact'])) {
-    addContact($db, $_POST['name'], $_POST['phone']);
+    addContact($pdo, $_POST['name'], $_POST['phone']);
 }
 
 // Traitement import CSV
 if (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
-    importCSV($db, $_FILES['csv_file']);
+    importCSV($pdo, $_FILES['csv_file']);
 }
 
 // Suppression contact
 if (isset($_GET['delete'])) {
-    deleteContact($db, $_GET['delete']);
+    deleteContact($pdo, $_GET['delete']);
 }
 
-// Fonctions
-function getContactCount($db) {
-    $result = $db->query("SELECT COUNT(*) as count FROM contacts");
-    $row = $result->fetchArray();
-    return $row['count'];
+// Fonctions PDO compatibles
+function getContactCount($pdo) {
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM contacts");
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row['count'] ?? 0;
 }
 
-function getConsentCount($db) {
-    $result = $db->query("SELECT COUNT(*) as count FROM contacts WHERE consent = 1");
-    $row = $result->fetchArray();
-    return $row['count'];
+function getConsentCount($pdo) {
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM contacts WHERE consent = 1");
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row['count'] ?? 0;
 }
 
-function displayContacts($db) {
-    $result = $db->query("SELECT * FROM contacts ORDER BY created_at DESC");
+function displayContacts($pdo) {
+    $stmt = $pdo->query("SELECT * FROM contacts ORDER BY created_at DESC");
     
-    while ($contact = $result->fetchArray(SQLITE3_ASSOC)) {
+    while ($contact = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $date = date('d/m/Y', strtotime($contact['created_at']));
         echo "<tr>";
         echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>{$contact['name']}</td>";
@@ -123,24 +141,31 @@ function displayContacts($db) {
     }
 }
 
-function addContact($db, $name, $phone) {
+function addContact($pdo, $name, $phone) {
     // Validation
     if (!preg_match('/^\+[1-9]\d{1,14}$/', $phone)) {
         echo "<script>alert('Format téléphone invalide. Ex: +33612345678')</script>";
         return;
     }
     
-    $stmt = $db->prepare("INSERT INTO contacts (name, phone) VALUES (:name, :phone)");
-    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-    $stmt->bindValue(':phone', $phone, SQLITE3_TEXT);
-    
-    if ($stmt->execute()) {
-        echo "<script>alert('Contact ajouté !')</script>";
-    } else {
-        echo "<script>alert('Erreur ou numéro déjà existant')</script>";
+    try {
+        $stmt = $pdo->prepare("INSERT INTO contacts (name, phone) VALUES (:name, :phone)");
+        $stmt->bindValue(':name', $name);
+        $stmt->bindValue(':phone', $phone);
+        
+        if ($stmt->execute()) {
+            echo "<script>alert('Contact ajouté !')</script>";
+        }
+    } catch (PDOException $e) {
+        if ($e->getCode() == 23000) { // Duplicate entry
+            echo "<script>alert('Numéro déjà existant')</script>";
+        } else {
+            echo "<script>alert('Erreur lors de l\\'ajout')</script>";
+        }
     }
 }
-function importCSV($db, $csvFile) {
+
+function importCSV($pdo, $csvFile) {
     if ($csvFile['error'] !== UPLOAD_ERR_OK) {
         echo "<script>alert('Erreur lors du téléchargement du fichier')</script>";
         return;
@@ -159,10 +184,9 @@ function importCSV($db, $csvFile) {
     $line = 0;
     
     // Préparer la requête d'insertion
-    $stmt = $db->prepare("INSERT OR IGNORE INTO contacts (name, phone) VALUES (:name, :phone)");
+    $stmt = $pdo->prepare("INSERT OR IGNORE INTO contacts (name, phone) VALUES (:name, :phone)");
     
-    // CORRECTION : Ajouter le paramètre $escape à fgetcsv()
-    while (($data = fgetcsv($file, 1000, ",", '"', '\\')) !== FALSE) {
+    while (($data = fgetcsv($file, 1000, ",")) !== FALSE) {
         $line++;
         
         // Ignorer la première ligne si c'est un en-tête
@@ -185,18 +209,18 @@ function importCSV($db, $csvFile) {
             continue;
         }
         
-        // Insertion
-        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $stmt->bindValue(':phone', $phone, SQLITE3_TEXT);
-        
-        if ($stmt->execute()) {
-            $imported++;
-        } else {
+        try {
+            $stmt->bindValue(':name', $name);
+            $stmt->bindValue(':phone', $phone);
+            
+            if ($stmt->execute()) {
+                $imported++;
+            } else {
+                $errors++;
+            }
+        } catch (PDOException $e) {
             $errors++;
         }
-        
-        // Réinitialiser la requête pour la prochaine ligne
-        $stmt->reset();
     }
     
     fclose($file);
@@ -209,13 +233,16 @@ function importCSV($db, $csvFile) {
     echo "<script>alert('{$message}')</script>";
 }
 
-function deleteContact($db, $id) {
-    $stmt = $db->prepare("DELETE FROM contacts WHERE id = :id");
-    $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
-    $stmt->execute();
-    
-    header("Location: contacts.php");
-    exit;
+function deleteContact($pdo, $id) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM contacts WHERE id = :id");
+        $stmt->bindValue(':id', $id);
+        $stmt->execute();
+        
+        echo "<script>alert('Contact supprimé !'); window.location.href = 'contacts.php';</script>";
+    } catch (Exception $e) {
+        echo "<script>alert('Erreur suppression contact')</script>";
+    }
 }
 
 include('includes/footer.php'); 

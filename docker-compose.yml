@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "8000:80"
+    environment:
+      - DATABASE_URL=postgresql://postgres:Fw70359545@db.lrvwhewjudeiuwqcaeqz.supabase.co:5432/postgres
+      - BACKEND_URL=https://whatsapp-backend.onrender.com

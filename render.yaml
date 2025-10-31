@@ -1,0 +1,26 @@
+services:
+  # Frontend PHP avec Docker
+  - type: web
+    name: masssender-frontend
+    env: docker
+    plan: free
+    docker:
+      dockerfile: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://postgres:Fw70359545@db.lrvwhewjudeiuwqcaeqz.supabase.co:5432/postgres
+      - key: BACKEND_URL
+        value: https://whatsapp-backend.onrender.com
+
+  # Backend Node.js (existant)
+  - type: web
+    name: whatsapp-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001

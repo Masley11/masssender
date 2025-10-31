@@ -1,4 +1,51 @@
-<?php include('includes/header.php'); ?>
+<?php 
+// public/index.php
+
+// Configuration pour Render
+if (getenv('RENDER')) {
+    // Utiliser SQLite en mode fichier
+    $dbPath = __DIR__ . '/data/contacts.db';
+    
+    // Créer le dossier data si nécessaire
+    if (!is_dir(dirname($dbPath))) {
+        mkdir(dirname($dbPath), 0755, true);
+    }
+    
+    // Initialiser la base de données
+    initDatabase($dbPath);
+}
+
+function initDatabase($dbPath) {
+    $db = new SQLite3($dbPath);
+    
+    // Créer les tables si elles n'existent pas
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT UNIQUE NOT NULL,
+            consent BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+    
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            total_contacts INTEGER,
+            sent_count INTEGER,
+            status TEXT,
+            created_at DATETIME,
+            completed_at DATETIME
+        )
+    ");
+    
+    $db->close();
+}
+
+include('includes/header.php'); 
+?>
 
 <main class="app-container">
     <div class="hero-section fade-in">
