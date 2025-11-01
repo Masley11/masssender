@@ -4,6 +4,7 @@ const { makeWASocket, useMultiFileAuthState, delay } = require('@whiskeysockets/
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,9 +18,12 @@ let socket = null;
 let qrCode = null;
 let isConnected = false;
 
-// Dossier persistant pour auth (Render : /mnt/data)
-const authFolder = path.join('/mnt/data', 'auth_info');
-if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder, { recursive: true });
+// Dossier auth dans le dossier temporaire (avec permissions)
+const authFolder = path.join(os.tmpdir(), 'whatsapp_auth');
+if (!fs.existsSync(authFolder)) {
+    fs.mkdirSync(authFolder, { recursive: true });
+}
+console.log('Dossier auth:', authFolder);
 
 // ---------------- API ---------------- //
 
@@ -27,7 +31,7 @@ if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder, { recursive: true });
 app.get('/api/status', (req, res) => {
     res.json({
         connected: isConnected,
-        qr: qrCode, // base64
+        qr: qrCode,
         status: isConnected ? 'connected' : (qrCode ? 'waiting' : 'disconnected')
     });
 });
@@ -43,14 +47,14 @@ app.post('/api/start', async (req, res) => {
 
         socket = makeWASocket({
             auth: state,
-            printQRInTerminal: false, // On ne veut pas le terminal sur Render
+            printQRInTerminal: false,
         });
 
         socket.ev.on('connection.update', async (update) => {
             const { connection, qr } = update;
 
             if (qr) {
-                qrCode = await QRCode.toDataURL(qr); // Génère le QR en base64
+                qrCode = await QRCode.toDataURL(qr);
                 console.log('QR Code généré');
             }
 
@@ -86,6 +90,17 @@ app.post('/api/stop', async (req, res) => {
         }
         isConnected = false;
         qrCode = null;
+        
+        // Nettoyer les fichiers d'auth
+        try {
+            const files = fs.readdirSync(authFolder);
+            for (const file of files) {
+                fs.unlinkSync(path.join(authFolder, file));
+            }
+        } catch (cleanError) {
+            console.log('Nettoyage des fichiers auth:', cleanError.message);
+        }
+        
         res.json({ success: true, message: 'WhatsApp arrêté' });
     } catch (error) {
         res.json({ success: false, error: error.message });
@@ -105,7 +120,7 @@ app.post('/api/send', async (req, res) => {
             return res.json({ success: false, error: 'Numéro et message requis' });
         }
 
-        // Formater le numéro correctement (avec indicatif pays)
+        // Formater le numéro correctement
         const formattedPhone = phone.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
 
         await socket.sendMessage(formattedPhone, { text: message });
@@ -118,7 +133,17 @@ app.post('/api/send', async (req, res) => {
     }
 });
 
+// Route de santé
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        authFolder: authFolder
+    });
+});
+
 // Lancer le serveur
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Backend WhatsApp démarré sur le port ${PORT}`);
+    console.log(`📁 Dossier auth: ${authFolder}`);
 });
