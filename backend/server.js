@@ -18,6 +18,7 @@ const defaultLogger = {
   info: console.log,
   warn: console.warn,
   error: console.error,
+  trace: console.debug, // Ajout pour éviter l'erreur
   child: () => defaultLogger,
 };
 
@@ -146,3 +147,4 @@ app.post('/api/send', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Backend WhatsApp démarré sur le port ${PORT}`);
 });
+
