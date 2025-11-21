@@ -1,17 +1,16 @@
 FROM php:8.2-apache
 
+
 # Installer les extensions PHP nécessaires
-RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql
-
-# Activer les extensions
-RUN docker-php-ext-enable pdo pdo_mysql pdo_pgsql
-
-# Installer et activer les autres extensions
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     curl \
-    && docker-php-ext-install zip
+    libpq-dev \
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql
+
+# Activer les extensions
+RUN docker-php-ext-enable pdo pdo_mysql pdo_pgsql
 
 # Copier le script build.sh dans l'image
 COPY build.sh /usr/local/bin/build.sh
