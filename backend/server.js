@@ -54,26 +54,30 @@ app.post('/api/start', async (req, res) => {
         });
 
         socket.ev.on('connection.update', (update) => {
-            const { connection, qr } = update;
             
-            if (qr) {
-                qrCode = qr;
-                console.log('QR Code reçu');
-                qrcode.generate(qr, { small: true });
-            }
+  console.log('Connection update:', update);
+  const { connection, qr } = update;
 
-            if (connection === 'open') {
-                isConnected = true;
-                qrCode = null;
-                console.log('✅ WhatsApp connecté!');
-            }
+  if (qr) {
+    // affiche QR code dans la console
+    qrCode = qr;
+    console.log('QR Code reçu');
+    qrcode.generate(qr, { small: true });
+  }
 
-            if (connection === 'close') {
-                isConnected = false;
-                socket = null;
-                console.log('❌ WhatsApp déconnecté');
-            }
-        });
+  if (connection === 'open') {
+    isConnected = true;
+    qrCode = null;
+    console.log('✅ WhatsApp connecté!');
+  }
+
+  if (connection === 'close') {
+    isConnected = false;
+    socket = null;
+    console.log('❌ WhatsApp déconnecté');
+  }
+});
+
 
         socket.ev.on('creds.update', saveCreds);
 
