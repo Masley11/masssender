@@ -1,25 +1,30 @@
 FROM php:8.2-apache
 
-# Mettre à jour et installer les dépendances pour PostgreSQL
+# Installer les extensions PHP nécessaires
+RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql
+
+# Activer les extensions
+RUN docker-php-ext-enable pdo pdo_mysql pdo_pgsql
+
+# Installer et activer les autres extensions
 RUN apt-get update && apt-get install -y \
-    libpq-dev \
     libzip-dev \
     zip \
-    unzip \
-    && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
-    && docker-php-ext-install pdo pdo_pgsql pgsql \
+    curl \
     && docker-php-ext-install zip
 
-# Copier les fichiers de l'application
-COPY public/ /var/www/html/
+# Copier le script build.sh dans l'image
+COPY build.sh /usr/local/bin/build.sh
+RUN chmod +x /usr/local/bin/build.sh
 
-# Configurer Apache
-RUN a2enmod rewrite
+# Exécuter le script build
+RUN /usr/local/bin/build.sh
 
-# Définir les permissions
-RUN chown -R www-data:www-data /var/www/html
+# Copier le script de démarrage
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
 
-# Exposer le port
-EXPOSE 80
+# Modifier la commande pour utiliser start.sh
+CMD ["/usr/local/bin/start.sh"]
 
-CMD ["apache2-foreground"]
+
