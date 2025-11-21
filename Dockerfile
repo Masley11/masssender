@@ -1,35 +1,49 @@
 FROM php:8.2-apache
 
-
-
 # Installer les extensions PHP nécessaires
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     curl \
     libpq-dev \
-    && docker-php-ext-install pdo pdo_mysql pdo_pgsql
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql zip
 
 # Activer les extensions
 RUN docker-php-ext-enable pdo pdo_mysql pdo_pgsql
 
-# Copier le script build.sh dans l'image
+# Activer le mod_rewrite d'Apache
+RUN a2enmod rewrite
+
+# Créer le répertoire public
+RUN mkdir -p /var/www/html/public
+
+# Copier les scripts
 COPY build.sh /usr/local/bin/build.sh
-RUN chmod +x /usr/local/bin/build.sh
-
-# Copier le script start.sh dans l'image
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/build.sh /usr/local/bin/start.sh
 
-# Modifier la configuration d'Apache pour que DocumentRoot pointe vers /var/www/html/public
-RUN sed -i 's#/var/www/html#/var/www/html/public#' /etc/apache2/sites-available/000-default.conf
+# Copier d'abord les fichiers de l'application
+COPY . /tmp/app/
 
-# Exécuter le script build
+# Exécuter le script build dans le contexte copié
+WORKDIR /tmp/app
 RUN /usr/local/bin/build.sh
 
-# Copier le contenu de 'public/' dans le dossier web d'Apache
-COPY public/ /var/www/html/
+# Déplacer les fichiers construits vers le répertoire web d'Apache
+RUN cp -r /tmp/app/public/* /var/www/html/ 2>/dev/null || true
 
-# Commande pour démarrer avec vérification en runtime
+# Vérifier que les fichiers sont bien présents
+RUN ls -la /var/www/html/
+
+# Modifier la configuration d'Apache pour que DocumentRoot pointe vers /var/www/html
+# (pas besoin de changer puisque c'est déjà la valeur par défaut)
+# Mais on ajoute une configuration pour le ServerName
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+# S'assurer qu'il y a un fichier index.php
+RUN if [ ! -f "/var/www/html/index.php" ]; then \
+    echo "<?php echo 'MassSender - Redirection en cours...'; header('Location: whatsapp/connexion.php'); ?>" > /var/www/html/index.php; \
+    fi
+
+EXPOSE 80
 CMD ["/usr/local/bin/start.sh"]
-
