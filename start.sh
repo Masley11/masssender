@@ -1,4 +1,4 @@
-
+#!bin/bash
 
 # Vérification de la connectivité Internet au démarrage
 if curl -I https://www.google.com > /dev/null 2>&1; then
@@ -10,3 +10,4 @@ fi
 
 # Démarrer Apache
 apache2-foreground
+
