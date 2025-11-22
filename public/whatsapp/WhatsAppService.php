@@ -5,8 +5,8 @@ class WhatsAppService {
     private $apiUrl;
     
     public function __construct() {
-        // URL du backend sur Render
-        $this->apiUrl = $_ENV['BACKEND_URL'] ?? 'https://whatsapp-backend.onrender.com';
+        // URL CORRECTE de votre backend sur Render
+        $this->apiUrl = $_ENV['BACKEND_URL'] ?? 'https://whatsapp-backend-e6sw.onrender.com';
     }
     
     /**
@@ -44,24 +44,6 @@ class WhatsAppService {
             'phone' => $this->formatPhone($phone),
             'message' => $message
         ]);
-    }
-    
-    /**
-     * Vérifie le statut de la connexion
-     * @return bool
-     */
-    public function checkConnection() {
-        $result = $this->callAPI('/api/status', 'GET');
-        return $result['connected'] ?? false;
-    }
-    
-    /**
-     * Récupère le QR Code pour la connexion
-     * @return string|null
-     */
-    public function getQRCode() {
-        $result = $this->callAPI('/api/status', 'GET');
-        return $result['qr'] ?? null;
     }
     
     /**
@@ -159,28 +141,6 @@ class WhatsAppService {
         }
         
         return $cleanPhone;
-    }
-    
-    /**
-     * Valide un numéro de téléphone
-     * @param string $phone
-     * @return bool
-     */
-    public function validatePhone($phone) {
-        $cleanPhone = $this->formatPhone($phone);
-        
-        // Validation basique pour les numéros français
-        return (strlen($cleanPhone) === 9 && is_numeric($cleanPhone));
-    }
-    
-    /**
-     * Définit une URL personnalisée pour l'API
-     * @param string $url
-     * @return self
-     */
-    public function setApiUrl($url) {
-        $this->apiUrl = rtrim($url, '/');
-        return $this;
     }
 }
 ?>
