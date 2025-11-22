@@ -297,202 +297,229 @@ $isBackendAlive = $whatsapp->isBackendAlive();
     </div>
 
     <script>
-        // Éléments DOM
-        const btnStart = document.getElementById('btnStart');
-        const btnStop = document.getElementById('btnStop');
-        const btnRefresh = document.getElementById('btnRefresh');
-        const sendMessageForm = document.getElementById('sendMessageForm');
-        const statusMessage = document.getElementById('statusMessage');
-        const messageResult = document.getElementById('messageResult');
-        const messageForm = document.getElementById('messageForm');
-        const logsDiv = document.getElementById('logs');
+    // Éléments DOM
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const btnRefresh = document.getElementById('btnRefresh');
+    const sendMessageForm = document.getElementById('sendMessageForm');
+    const statusMessage = document.getElementById('statusMessage');
+    const messageResult = document.getElementById('messageResult');
+    const messageForm = document.getElementById('messageForm');
+    const logsDiv = document.getElementById('logs');
+    
+    // Ajouter un log
+    function addLog(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
         
-        // Ajouter un log
-        function addLog(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = document.createElement('div');
-            logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
-            
-            if (type === 'error') {
-                logEntry.style.color = '#dc3545';
-            } else if (type === 'success') {
-                logEntry.style.color = '#28a745';
-            }
-            
-            logsDiv.appendChild(logEntry);
-            logsDiv.scrollTop = logsDiv.scrollHeight;
+        if (type === 'error') {
+            logEntry.style.color = '#dc3545';
+        } else if (type === 'success') {
+            logEntry.style.color = '#28a745';
         }
         
-        // Mettre à jour le statut
-        async function updateStatus() {
-            addLog('Actualisation du statut...');
-            statusMessage.innerHTML = '<div class="loading"></div> Actualisation...';
-            
-            try {
-                const response = await fetch('connexion.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'action=get_status'
-                });
-                
-                const data = await response.json();
-                
-                // Mettre à jour l'interface
-                if (data.connected) {
-                    btnStart.disabled = true;
-                    btnStop.disabled = false;
-                    messageForm.classList.remove('hidden');
-                    statusMessage.innerHTML = '<div class="alert alert-success">✅ Connecté</div>';
-                } else if (data.qr) {
-                    btnStart.disabled = true;
-                    btnStop.disabled = false;
-                    messageForm.classList.add('hidden');
-                    statusMessage.innerHTML = '<div class="alert alert-warning">📱 QR Code disponible - Scannez pour vous connecter</div>';
-                    // Recharger la page pour afficher le QR code
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    btnStart.disabled = false;
-                    btnStop.disabled = true;
-                    messageForm.classList.add('hidden');
-                    statusMessage.innerHTML = '<div class="alert alert-error">❌ Déconnecté</div>';
-                }
-                
-                addLog('Statut actualisé: ' + (data.connected ? 'Connecté' : 'Déconnecté'));
-                
-            } catch (error) {
-                addLog('Erreur lors de la vérification du statut: ' + error.message, 'error');
-                statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion au serveur</div>';
-            }
-        }
+        logsDiv.appendChild(logEntry);
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+    }
+    
+    // Mettre à jour le statut
+    async function updateStatus() {
+        addLog('Actualisation du statut...');
+        statusMessage.innerHTML = '<div class="loading"></div> Actualisation...';
         
-        // Démarrer WhatsApp
-        async function startWhatsApp() {
-            addLog('Démarrage de WhatsApp...');
-            statusMessage.innerHTML = '<div class="loading"></div> Démarrage en cours...';
-            btnStart.disabled = true;
+        try {
+            const response = await fetch('connexion.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get_status'
+            });
             
-            try {
-                const response = await fetch('connexion.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'action=start'
-                });
+            const data = await response.json();
+            
+            // Mettre à jour l'interface
+            if (data.connected) {
+                btnStart.disabled = true;
+                btnStop.disabled = false;
+                messageForm.classList.remove('hidden');
+                statusMessage.innerHTML = '<div class="alert alert-success">✅ Connecté</div>';
                 
-                const data = await response.json();
-                
-                if (data.success) {
-                    addLog('WhatsApp démarré avec succès', 'success');
-                    statusMessage.innerHTML = '<div class="alert alert-success">✅ ' + data.message + '</div>';
-                    // Actualiser le statut après un délai
-                    setTimeout(updateStatus, 3000);
-                } else {
-                    addLog('Erreur démarrage: ' + data.error, 'error');
-                    statusMessage.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
-                    btnStart.disabled = false;
+                // Cacher le QR code si connecté
+                const qrContainer = document.querySelector('.qr-code');
+                if (qrContainer) {
+                    qrContainer.style.display = 'none';
                 }
                 
-            } catch (error) {
-                addLog('Erreur: ' + error.message, 'error');
-                statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
+            } else if (data.qr) {
+                btnStart.disabled = true;
+                btnStop.disabled = false;
+                messageForm.classList.add('hidden');
+                statusMessage.innerHTML = '<div class="alert alert-warning">📱 QR Code disponible - Scannez pour vous connecter</div>';
+                
+                // Afficher le QR code SANS recharger la page
+                let qrContainer = document.querySelector('.qr-code');
+                if (!qrContainer) {
+                    qrContainer = document.createElement('div');
+                    qrContainer.className = 'qr-code';
+                    document.querySelector('.whatsapp-page').appendChild(qrContainer);
+                }
+                
+                qrContainer.innerHTML = `
+                    <h3>Code QR de connexion</h3>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.qr)}" 
+                         alt="QR Code WhatsApp">
+                    <p>Scannez ce code avec l'application WhatsApp > Paramètres > Appareils connectés</p>
+                `;
+                
+            } else {
+                btnStart.disabled = false;
+                btnStop.disabled = true;
+                messageForm.classList.add('hidden');
+                statusMessage.innerHTML = '<div class="alert alert-error">❌ Déconnecté</div>';
+                
+                // Cacher le QR code si déconnecté
+                const qrContainer = document.querySelector('.qr-code');
+                if (qrContainer) {
+                    qrContainer.style.display = 'none';
+                }
+            }
+            
+            addLog('Statut actualisé: ' + (data.connected ? 'Connecté' : 'Déconnecté'));
+            
+        } catch (error) {
+            addLog('Erreur lors de la vérification du statut: ' + error.message, 'error');
+            statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion au serveur</div>';
+        }
+    }
+    
+    // Démarrer WhatsApp
+    async function startWhatsApp() {
+        addLog('Démarrage de WhatsApp...');
+        statusMessage.innerHTML = '<div class="loading"></div> Démarrage en cours...';
+        btnStart.disabled = true;
+        
+        try {
+            const response = await fetch('connexion.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=start'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                addLog('WhatsApp démarré avec succès', 'success');
+                statusMessage.innerHTML = '<div class="alert alert-success">✅ ' + data.message + '</div>';
+                // Actualiser le statut après un délai
+                setTimeout(updateStatus, 3000);
+            } else {
+                addLog('Erreur démarrage: ' + data.error, 'error');
+                statusMessage.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
                 btnStart.disabled = false;
             }
-        }
-        
-        // Arrêter WhatsApp
-        async function stopWhatsApp() {
-            addLog('Arrêt de WhatsApp...');
-            statusMessage.innerHTML = '<div class="loading"></div> Arrêt en cours...';
-            btnStop.disabled = true;
             
-            try {
-                const response = await fetch('connexion.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'action=stop'
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    addLog('WhatsApp arrêté avec succès', 'success');
-                    statusMessage.innerHTML = '<div class="alert alert-success">✅ WhatsApp arrêté</div>';
-                    // Actualiser le statut après un délai
-                    setTimeout(updateStatus, 2000);
-                } else {
-                    addLog('Erreur arrêt: ' + data.error, 'error');
-                    statusMessage.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
-                    btnStop.disabled = false;
-                }
-                
-            } catch (error) {
-                addLog('Erreur: ' + error.message, 'error');
-                statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
+        } catch (error) {
+            addLog('Erreur: ' + error.message, 'error');
+            statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
+            btnStart.disabled = false;
+        }
+    }
+    
+    // Arrêter WhatsApp
+    async function stopWhatsApp() {
+        addLog('Arrêt de WhatsApp...');
+        statusMessage.innerHTML = '<div class="loading"></div> Arrêt en cours...';
+        btnStop.disabled = true;
+        
+        try {
+            const response = await fetch('connexion.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=stop'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                addLog('WhatsApp arrêté avec succès', 'success');
+                statusMessage.innerHTML = '<div class="alert alert-success">✅ WhatsApp arrêté</div>';
+                // Actualiser le statut après un délai
+                setTimeout(updateStatus, 2000);
+            } else {
+                addLog('Erreur arrêt: ' + data.error, 'error');
+                statusMessage.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
                 btnStop.disabled = false;
             }
-        }
-        
-        // Envoyer un message
-        async function sendMessage(phone, message) {
-            addLog(`Envoi message à ${phone}...`);
-            messageResult.innerHTML = '<div class="loading"></div> Envoi en cours...';
             
-            try {
-                const response = await fetch('connexion.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `action=send_message&phone=${encodeURIComponent(phone)}&message=${encodeURIComponent(message)}`
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    addLog(`✅ Message envoyé à ${phone}`, 'success');
-                    messageResult.innerHTML = '<div class="alert alert-success">✅ Message envoyé avec succès</div>';
-                    // Effacer le formulaire
-                    sendMessageForm.reset();
-                } else {
-                    addLog(`❌ Erreur envoi: ${data.error}`, 'error');
-                    messageResult.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
-                }
-                
-            } catch (error) {
-                addLog('Erreur envoi: ' + error.message, 'error');
-                messageResult.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
-            }
+        } catch (error) {
+            addLog('Erreur: ' + error.message, 'error');
+            statusMessage.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
+            btnStop.disabled = false;
         }
+    }
+    
+    // Envoyer un message
+    async function sendMessage(phone, message) {
+        addLog(`Envoi message à ${phone}...`);
+        messageResult.innerHTML = '<div class="loading"></div> Envoi en cours...';
         
-        // Événements
-        btnStart.addEventListener('click', startWhatsApp);
-        btnStop.addEventListener('click', stopWhatsApp);
-        btnRefresh.addEventListener('click', updateStatus);
-        
-        sendMessageForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const phone = document.getElementById('phone').value.trim();
-            const message = document.getElementById('message').value.trim();
+        try {
+            const response = await fetch('connexion.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=send_message&phone=${encodeURIComponent(phone)}&message=${encodeURIComponent(message)}`
+            });
             
-            if (!phone || !message) {
-                messageResult.innerHTML = '<div class="alert alert-error">❌ Veuillez remplir tous les champs</div>';
-                return;
+            const data = await response.json();
+            
+            if (data.success) {
+                addLog(`✅ Message envoyé à ${phone}`, 'success');
+                messageResult.innerHTML = '<div class="alert alert-success">✅ Message envoyé avec succès</div>';
+                // Effacer le formulaire
+                sendMessageForm.reset();
+            } else {
+                addLog(`❌ Erreur envoi: ${data.error}`, 'error');
+                messageResult.innerHTML = '<div class="alert alert-error">❌ ' + data.error + '</div>';
             }
             
-            sendMessage(phone, message);
-        });
+        } catch (error) {
+            addLog('Erreur envoi: ' + error.message, 'error');
+            messageResult.innerHTML = '<div class="alert alert-error">❌ Erreur de connexion</div>';
+        }
+    }
+    
+    // Événements
+    btnStart.addEventListener('click', startWhatsApp);
+    btnStop.addEventListener('click', stopWhatsApp);
+    btnRefresh.addEventListener('click', updateStatus);
+    
+    sendMessageForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const phone = document.getElementById('phone').value.trim();
+        const message = document.getElementById('message').value.trim();
         
-        // Actualisation automatique du statut toutes les 10 secondes
-        setInterval(updateStatus, 10000);
+        if (!phone || !message) {
+            messageResult.innerHTML = '<div class="alert alert-error">❌ Veuillez remplir tous les champs</div>';
+            return;
+        }
         
-        // Initialisation
-        addLog('Interface WhatsApp initialisée');
-        updateStatus();
-    </script>
+        sendMessage(phone, message);
+    });
+    
+    // Actualisation automatique du statut toutes les 10 secondes
+    setInterval(updateStatus, 10000);
+    
+    // Initialisation
+    addLog('Interface WhatsApp initialisée');
+    updateStatus();
+</script>
 </body>
 </html>
