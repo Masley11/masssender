@@ -12,14 +12,17 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Configuration du logger compatible avec Baileys
-const logger = {
-    level: 'info',
-    info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
-    warn: (msg, ...args) => console.warn(`[WARN] ${msg}`, ...args),
-    error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
-    debug: (msg, ...args) => console.debug(`[DEBUG] ${msg}`, ...args),
-    trace: (msg, ...args) => console.trace(`[TRACE] ${msg}`, ...args)
+// Logger compatible avec Baileys
+const createLogger = (name = 'Baileys') => {
+    return {
+        level: 'info',
+        info: (msg, ...args) => console.log(`[${name}] ${msg}`, ...args),
+        warn: (msg, ...args) => console.warn(`[${name}] ${msg}`, ...args),
+        error: (msg, ...args) => console.error(`[${name}] ${msg}`, ...args),
+        debug: (msg, ...args) => console.debug(`[${name}] ${msg}`, ...args),
+        trace: (msg, ...args) => console.trace(`[${name}] ${msg}`, ...args),
+        child: (childName) => createLogger(`${name}:${childName}`)
+    };
 };
 
 // État global
@@ -42,22 +45,21 @@ async function connectToWhatsApp() {
         
         const { state, saveCreds } = await useMultiFileAuthState(authFolder);
 
-        // Configuration améliorée pour Render
+        // Configuration simplifiée sans logger personnalisé
         socket = makeWASocket({
             auth: state,
             printQRInTerminal: true,
-            logger: logger,
+            // Ne pas passer de logger personnalisé - utiliser le défaut
             browser: ['Ubuntu', 'Chrome', '120.0.0.0'],
             connectTimeoutMs: 60000,
             keepAliveIntervalMs: 30000,
-            markOnlineOnConnect: false, // Important pour les serveurs
+            markOnlineOnConnect: false,
             generateHighQualityLinkPreview: true,
             getMessage: async (key) => {
                 return {
                     conversation: "hello"
                 }
-            },
-            version: [2, 2413, 1] // Version spécifique
+            }
         });
 
         socket.ev.on('connection.update', async (update) => {
@@ -111,9 +113,6 @@ async function connectToWhatsApp() {
         });
 
         socket.ev.on('creds.update', saveCreds);
-        socket.ev.on('messages.upsert', () => {
-            // Gérer les nouveaux messages si nécessaire
-        });
 
     } catch (error) {
         console.error('💥 Erreur connexion WhatsApp:', error);
