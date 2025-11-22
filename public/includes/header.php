@@ -42,7 +42,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Styles -->
-    <link rel="stylesheet" href="<?php echo $baseUrl; ?>assets/css/style.css">
+    <link rel="stylesheet" href="/public/assets/css/style.css">
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="<?php echo $baseUrl; ?>assets/images/favicon.ico">
