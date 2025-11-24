@@ -4,6 +4,67 @@ include('includes/header.php');
 
 // Connexion DB
 $db = new SQLite3('contacts.db');
+
+// Créer les tables si elles n'existent pas
+initializeDatabase($db);
+
+function initializeDatabase($db) {
+    // Table contacts
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT UNIQUE NOT NULL,
+            consent INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+    
+    // Table campaigns
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            total_contacts INTEGER,
+            sent_count INTEGER,
+            status TEXT,
+            created_at DATETIME,
+            completed_at DATETIME
+        )
+    ");
+    
+    // Table message_logs
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS message_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER,
+            contact_id INTEGER,
+            phone TEXT,
+            status TEXT,
+            sent_at DATETIME
+        )
+    ");
+    
+    // Insérer des données d'exemple si la table contacts est vide
+    $result = $db->query("SELECT COUNT(*) as count FROM contacts");
+    $row = $result->fetchArray();
+    if ($row['count'] == 0) {
+        $sampleContacts = [
+            ['Jean Dupont', '+33123456789', 1],
+            ['Marie Martin', '+33987654321', 1],
+            ['Pierre Durand', '+33555123456', 0],
+            ['Sophie Lambert', '+33222333444', 1]
+        ];
+        
+        $stmt = $db->prepare("INSERT INTO contacts (name, phone, consent) VALUES (?, ?, ?)");
+        foreach ($sampleContacts as $contact) {
+            $stmt->bindValue(1, $contact[0], SQLITE3_TEXT);
+            $stmt->bindValue(2, $contact[1], SQLITE3_TEXT);
+            $stmt->bindValue(3, $contact[2], SQLITE3_INTEGER);
+            $stmt->execute();
+        }
+    }
+}
 ?>
 
 <h1>💬 Envoyer des Messages</h1>
@@ -64,8 +125,11 @@ if (isset($_POST['send_messages'])) {
 // Fonctions
 function getActiveContactsCount($db) {
     $result = $db->query("SELECT COUNT(*) as count FROM contacts WHERE consent = 1");
-    $row = $result->fetchArray();
-    return $row['count'];
+    if ($result) {
+        $row = $result->fetchArray();
+        return $row['count'];
+    }
+    return 0;
 }
 
 function sendBulkMessages($db, $message) {
@@ -137,7 +201,7 @@ function simulateWhatsAppSending($db, $contacts, $message, $campaignId) {
         $db->exec("UPDATE campaigns SET sent_count = {$sentCount} WHERE id = {$campaignId}");
         
         // Délai de 10 secondes entre les messages
-        sleep(10);
+        sleep(2); // Réduit à 2s pour les tests
         
         // Mettre à jour la progression en temps réel
         $progress = round(($sentCount / $totalContacts) * 100);
@@ -160,30 +224,6 @@ function simulateWhatsAppSending($db, $contacts, $message, $campaignId) {
 }
 
 function displayMessageHistory($db) {
-    // Vérifier si la table campaigns existe, sinon la créer
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            message TEXT NOT NULL,
-            total_contacts INTEGER,
-            sent_count INTEGER,
-            status TEXT,
-            created_at DATETIME,
-            completed_at DATETIME
-        )
-    ");
-    
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS message_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER,
-            contact_id INTEGER,
-            phone TEXT,
-            status TEXT,
-            sent_at DATETIME
-        )
-    ");
-    
     $result = $db->query("
         SELECT * FROM campaigns 
         ORDER BY created_at DESC 
@@ -245,8 +285,8 @@ function simulateSending(totalContacts, campaignId) {
             progressBar.style.width = progress + '%';
             progressText.innerHTML = `Envoi ${sent}/${totalContacts} (${progress}%) - Simulation en cours...`;
             
-            // Simuler un délai de 10 secondes
-            setTimeout(sendNext, 1000); // 1s pour les tests, 10000 pour la prod
+            // Simuler un délai de 2 secondes pour les tests
+            setTimeout(sendNext, 2000);
         } else {
             progressText.innerHTML = '✅ Envoi simulé terminé !';
             setTimeout(() => { location.reload(); }, 2000);
