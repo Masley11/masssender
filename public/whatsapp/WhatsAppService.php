@@ -34,6 +34,22 @@ class WhatsAppService {
     }
     
     /**
+     * Réinitialise complètement la session WhatsApp
+     * @return array
+     */
+    public function resetConnection() {
+        return $this->callAPI('/api/reset', 'POST');
+    }
+    
+    /**
+     * Récupère les informations de débogage des sessions
+     * @return array
+     */
+    public function getDebugInfo() {
+        return $this->callAPI('/api/debug-sessions', 'GET');
+    }
+    
+    /**
      * Envoie un message WhatsApp
      * @param string $phone Numéro de téléphone
      * @param string $message Message à envoyer
@@ -62,7 +78,7 @@ class WhatsAppService {
         $status = $this->callAPI('/api/status', 'GET');
         
         // Si déconnecté mais qu'une session existe, tenter une restauration
-        if (!$status['connected'] && $status['persistent']) {
+        if (!$status['connected'] && ($status['persistent'] ?? false)) {
             $this->restoreConnection();
         }
         
@@ -74,8 +90,16 @@ class WhatsAppService {
      * @return bool
      */
     public function isBackendAlive() {
-        $result = $this->callAPI('/api/status', 'GET', null, 5);
-        return !isset($result['error']);
+        $result = $this->callAPI('/api/health', 'GET', null, 5);
+        return !isset($result['error']) && ($result['status'] ?? '') === 'ok';
+    }
+    
+    /**
+     * Vérifie l'état de santé détaillé du backend
+     * @return array
+     */
+    public function getHealthStatus() {
+        return $this->callAPI('/api/health', 'GET');
     }
     
     /**
@@ -107,10 +131,12 @@ class WhatsAppService {
             $response = @file_get_contents($url, false, $context);
             
             if ($response === FALSE) {
+                $error = error_get_last();
                 return [
                     'success' => false, 
                     'error' => 'Service WhatsApp indisponible',
-                    'details' => 'Impossible de contacter le serveur backend: ' . $url
+                    'details' => 'Impossible de contacter le serveur backend: ' . $url,
+                    'php_error' => $error['message'] ?? 'Unknown error'
                 ];
             }
             
@@ -121,7 +147,8 @@ class WhatsAppService {
                 return [
                     'success' => false,
                     'error' => 'Réponse invalide du serveur',
-                    'details' => json_last_error_msg()
+                    'details' => json_last_error_msg(),
+                    'raw_response' => $response
                 ];
             }
             
@@ -156,6 +183,33 @@ class WhatsAppService {
         }
         
         return $cleanPhone;
+    }
+    
+    /**
+     * Valide un numéro de téléphone
+     * @param string $phone
+     * @return bool
+     */
+    public function validatePhone($phone) {
+        $cleanPhone = $this->formatPhone($phone);
+        return !empty($cleanPhone) && strlen($cleanPhone) >= 8 && strlen($cleanPhone) <= 12;
+    }
+    
+    /**
+     * Récupère les informations de session détaillées
+     * @return array
+     */
+    public function getSessionInfo() {
+        $debugInfo = $this->getDebugInfo();
+        $status = $this->getStatus();
+        $health = $this->getHealthStatus();
+        
+        return [
+            'debug' => $debugInfo,
+            'status' => $status,
+            'health' => $health,
+            'backend_url' => $this->apiUrl
+        ];
     }
 }
 ?>

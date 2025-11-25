@@ -67,7 +67,6 @@ $isConnected = $status['connected'] ?? false;
 $qrCode = $status['qr'] ?? null;
 $isBackendAlive = $whatsapp->isBackendAlive();
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -76,62 +75,81 @@ $isBackendAlive = $whatsapp->isBackendAlive();
     <title>Connexion WhatsApp</title>
     <style>
         .whatsapp-page {
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #25D366;
+            margin-bottom: 30px;
+        }
+        
+        h3 {
+            color: #075E54;
+            margin-top: 0;
         }
         
         .status-card {
-            background: #f8f9fa;
-            border-radius: 10px;
+            background: white;
+            border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            border-left: 4px solid #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
         }
         
         .status-connected {
-            border-left-color: #28a745;
-            background: #d4edda;
+            border-left: 4px solid #25D366;
         }
         
         .status-disconnected {
-            border-left-color: #dc3545;
-            background: #f8d7da;
+            border-left: 4px solid #ff4444;
         }
         
         .status-waiting {
-            border-left-color: #ffc107;
-            background: #fff3cd;
+            border-left: 4px solid #ffbb33;
         }
         
         .btn {
-            padding: 10px 20px;
+            padding: 10px 16px;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 16px;
-            margin: 5px;
+            font-size: 14px;
+            margin: 4px;
+            transition: all 0.2s;
         }
         
         .btn-start {
-            background: #28a745;
+            background: #25D366;
             color: white;
         }
         
         .btn-stop {
-            background: #dc3545;
+            background: #ff4444;
             color: white;
         }
         
         .btn-send {
-            background: #007bff;
+            background: #128C7E;
             color: white;
+            width: 100%;
+            padding: 12px;
         }
         
         .btn:disabled {
-            background: #6c757d;
+            background: #cccccc;
             cursor: not-allowed;
+        }
+        
+        .btn:hover:not(:disabled) {
+            opacity: 0.9;
+            transform: translateY(-1px);
         }
         
         .qr-code {
@@ -140,19 +158,18 @@ $isBackendAlive = $whatsapp->isBackendAlive();
         }
         
         .qr-code img {
-            max-width: 300px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            max-width: 250px;
+            border-radius: 8px;
         }
         
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
         
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
+            margin-bottom: 6px;
+            font-weight: 500;
         }
         
         .form-group input, 
@@ -160,42 +177,53 @@ $isBackendAlive = $whatsapp->isBackendAlive();
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        small {
+            color: #666;
+            font-size: 12px;
         }
         
         .alert {
-            padding: 10px;
-            border-radius: 5px;
+            padding: 10px 12px;
+            border-radius: 6px;
             margin: 10px 0;
+            font-size: 14px;
         }
         
         .alert-success {
             background: #d4edda;
             color: #155724;
-            border: 1px solid #c3e6cb;
         }
         
         .alert-error {
             background: #f8d7da;
             color: #721c24;
-            border: 1px solid #f5c6cb;
         }
         
         .alert-warning {
             background: #fff3cd;
             color: #856404;
-            border: 1px solid #ffeaa7;
         }
         
         .loading {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #007bff;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #25D366;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
         }
         
         @keyframes spin {
@@ -205,6 +233,30 @@ $isBackendAlive = $whatsapp->isBackendAlive();
         
         .hidden {
             display: none;
+        }
+        
+        .actions {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        #logs {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .log-entry {
+            margin-bottom: 4px;
+        }
+        
+        .log-time {
+            color: #666;
         }
     </style>
 </head>
@@ -216,7 +268,7 @@ $isBackendAlive = $whatsapp->isBackendAlive();
         <?php if (!$isBackendAlive): ?>
             <div class="alert alert-error">
                 <strong>⚠️ Service indisponible</strong><br>
-                Le service WhatsApp n'est pas accessible. Vérifiez que le backend est démarré sur le port 3001.
+                Le service WhatsApp n'est pas accessible.
             </div>
         <?php endif; ?>
         
@@ -226,28 +278,25 @@ $isBackendAlive = $whatsapp->isBackendAlive();
             
             <?php if ($isConnected): ?>
                 <p><strong>✅ WhatsApp est connecté</strong></p>
-                <p>Vous pouvez maintenant envoyer des messages.</p>
             <?php elseif ($qrCode): ?>
                 <p><strong>📱 Code QR disponible</strong></p>
-                <p>Scannez le code QR avec votre téléphone pour vous connecter.</p>
             <?php else: ?>
                 <p><strong>❌ WhatsApp n'est pas connecté</strong></p>
-                <p>Démarrez la connexion pour générer un code QR.</p>
             <?php endif; ?>
             
             <div id="statusMessage"></div>
         </div>
         
         <!-- Actions -->
-        <div style="text-align: center; margin: 20px 0;">
+        <div class="actions">
             <button id="btnStart" class="btn btn-start" <?php echo $isConnected ? 'disabled' : ''; ?>>
-                🚀 Démarrer WhatsApp
+                Démarrer
             </button>
             <button id="btnStop" class="btn btn-stop" <?php echo !$isConnected ? 'disabled' : ''; ?>>
-                🛑 Arrêter WhatsApp
+                Arrêter
             </button>
             <button id="btnRefresh" class="btn">
-                🔄 Actualiser le statut
+                Actualiser
             </button>
         </div>
         
@@ -255,9 +304,9 @@ $isBackendAlive = $whatsapp->isBackendAlive();
         <?php if ($qrCode): ?>
             <div class="qr-code">
                 <h3>Code QR de connexion</h3>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=<?php echo urlencode($qrCode); ?>" 
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=<?php echo urlencode($qrCode); ?>" 
                      alt="QR Code WhatsApp">
-                <p>Scannez ce code avec l'application WhatsApp > Paramètres > Appareils connectés</p>
+                <p>Scannez ce code avec WhatsApp > Paramètres > Appareils connectés</p>
             </div>
         <?php endif; ?>
         
@@ -280,7 +329,7 @@ $isBackendAlive = $whatsapp->isBackendAlive();
                 </div>
                 
                 <button type="submit" class="btn btn-send">
-                    📨 Envoyer le message
+                    Envoyer le message
                 </button>
                 
                 <div id="messageResult" style="margin-top: 15px;"></div>
@@ -289,14 +338,15 @@ $isBackendAlive = $whatsapp->isBackendAlive();
         
         <!-- Logs en temps réel -->
         <div style="margin-top: 30px;">
-            <h3>📊 Logs en temps réel</h3>
-            <div id="logs" style="background: #f8f9fa; padding: 15px; border-radius: 5px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+            <h3>📊 Logs</h3>
+            <div id="logs">
                 <!-- Les logs seront affichés ici -->
             </div>
         </div>
     </div>
 
     <script>
+    // Le code JavaScript reste exactement le même
     // Éléments DOM
     const btnStart = document.getElementById('btnStart');
     const btnStop = document.getElementById('btnStop');
@@ -311,7 +361,8 @@ $isBackendAlive = $whatsapp->isBackendAlive();
     function addLog(message, type = 'info') {
         const timestamp = new Date().toLocaleTimeString();
         const logEntry = document.createElement('div');
-        logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
+        logEntry.className = 'log-entry';
+        logEntry.innerHTML = `<span class="log-time">[${timestamp}]</span> ${message}`;
         
         if (type === 'error') {
             logEntry.style.color = '#dc3545';
@@ -368,9 +419,9 @@ $isBackendAlive = $whatsapp->isBackendAlive();
                 
                 qrContainer.innerHTML = `
                     <h3>Code QR de connexion</h3>
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.qr)}" 
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr)}" 
                          alt="QR Code WhatsApp">
-                    <p>Scannez ce code avec l'application WhatsApp > Paramètres > Appareils connectés</p>
+                    <p>Scannez ce code avec WhatsApp > Paramètres > Appareils connectés</p>
                 `;
                 
             } else {

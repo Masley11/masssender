@@ -33,7 +33,12 @@ function saveSessionState() {
         connectionStatus,
         timestamp: Date.now()
     };
-    fs.writeFileSync(path.join(SESSION_DIR, 'session-state.json'), JSON.stringify(state));
+    try {
+        fs.writeFileSync(path.join(SESSION_DIR, 'session-state.json'), JSON.stringify(state));
+        console.log('💾 État de session sauvegardé');
+    } catch (error) {
+        console.log('❌ Erreur sauvegarde état:', error);
+    }
 }
 
 // Fonction pour charger l'état
@@ -44,11 +49,14 @@ function loadSessionState() {
             const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
             // Vérifier si la session n'est pas trop vieille (max 24h)
             if (Date.now() - state.timestamp < 24 * 60 * 60 * 1000) {
+                console.log('📁 État de session chargé:', state);
                 return state;
+            } else {
+                console.log('🗑️ Session expirée');
             }
         }
     } catch (error) {
-        console.log('Aucun état de session trouvé ou erreur de lecture');
+        console.log('❌ Aucun état de session valide trouvé');
     }
     return null;
 }
@@ -57,6 +65,19 @@ function loadSessionState() {
 function initializeWhatsApp() {
     console.log('🔄 Initialisation de WhatsApp...');
     
+    // Vérifier l'état de la session avant d'initialiser
+    const sessionPath = path.join(SESSION_DIR, 'masssender-client');
+    const sessionExists = fs.existsSync(sessionPath);
+    
+    console.log('📁 Session existante:', sessionExists);
+    
+    // Nettoyer si le client existe déjà
+    if (client) {
+        console.log('🛑 Nettoyage du client précédent...');
+        client.destroy().catch(() => {});
+        client = null;
+    }
+
     client = new Client({
         authStrategy: new LocalAuth({
             clientId: "masssender-client",
@@ -75,16 +96,16 @@ function initializeWhatsApp() {
                 '--single-process'
             ]
         },
-        // Ajouter ces options pour la persistance
         restartOnAuthFail: true,
-        takeoverOnConflict: true,
-        takeoverTimeoutMs: 15000
+        takeoverOnConflict: false, // IMPORTANT: Éviter les conflits
+        takeoverTimeoutMs: 5000
     });
 
     // Génération du QR Code
     client.on('qr', (qr) => {
         qrCode = qr;
         connectionStatus = 'waiting_qr';
+        isConnected = false;
         console.log('📱 QR Code reçu - Scannez pour vous connecter');
         qrcode.generate(qr, { small: true });
         saveSessionState();
@@ -96,45 +117,48 @@ function initializeWhatsApp() {
         qrCode = null;
         connectionStatus = 'connected';
         console.log('✅ WhatsApp connecté avec succès!');
+        console.log('🎯 Session active sauvegardée dans:', sessionPath);
         saveSessionState();
     });
 
     // Authentification réussie
     client.on('authenticated', () => {
-        console.log('🔐 Authentification réussie');
+        console.log('🔐 Authentification réussie - Session sauvegardée');
         saveSessionState();
     });
 
     // Déconnexion
     client.on('disconnected', (reason) => {
         isConnected = false;
+        qrCode = null;
         connectionStatus = 'disconnected';
         console.log('❌ WhatsApp déconnecté:', reason);
-        saveSessionState();
         
         // Nettoyer la session
-        try {
-            const statePath = path.join(SESSION_DIR, 'session-state.json');
-            if (fs.existsSync(statePath)) {
-                fs.unlinkSync(statePath);
-            }
-        } catch (error) {
-            console.log('Erreur lors du nettoyage de la session');
-        }
-
-        // Reconnexion automatique après 10 secondes
+        cleanupSession();
+        
+        // Reconnexion automatique après 5 secondes
         setTimeout(() => {
-            console.log('🔄 Tentative de reconnexion...');
+            console.log('🔄 Tentative de reconnexion automatique...');
             initializeWhatsApp();
             client.initialize().catch(error => {
                 console.log('❌ Erreur lors de la réinitialisation:', error);
             });
-        }, 10000);
+        }, 5000);
     });
 
     // Erreurs
     client.on('auth_failure', (error) => {
         console.log('❌ Échec de l\'authentification:', error);
+        connectionStatus = 'error';
+        isConnected = false;
+        cleanupSession();
+        saveSessionState();
+    });
+
+    // Erreur générale
+    client.on('error', (error) => {
+        console.log('❌ Erreur WhatsApp:', error);
         connectionStatus = 'error';
         saveSessionState();
     });
@@ -142,7 +166,22 @@ function initializeWhatsApp() {
     // Initialiser le client
     client.initialize().catch(error => {
         console.log('❌ Erreur lors de l\'initialisation:', error);
+        connectionStatus = 'error';
+        saveSessionState();
     });
+}
+
+// Nettoyage de session
+function cleanupSession() {
+    try {
+        const statePath = path.join(SESSION_DIR, 'session-state.json');
+        if (fs.existsSync(statePath)) {
+            fs.unlinkSync(statePath);
+            console.log('🗑️ Fichier d\'état supprimé');
+        }
+    } catch (error) {
+        console.log('❌ Erreur lors du nettoyage:', error);
+    }
 }
 
 // Routes API
@@ -152,7 +191,8 @@ app.get('/api/status', (req, res) => {
         qr: qrCode,
         status: connectionStatus,
         message: getStatusMessage(connectionStatus),
-        persistent: true
+        persistent: true,
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -183,7 +223,7 @@ app.post('/api/start', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur démarrage:', error);
+        console.error('❌ Erreur démarrage:', error);
         res.json({ 
             success: false, 
             error: 'Erreur lors du démarrage: ' + error.message 
@@ -201,15 +241,7 @@ app.post('/api/stop', async (req, res) => {
         qrCode = null;
         connectionStatus = 'disconnected';
         
-        // Nettoyer la session
-        try {
-            const statePath = path.join(SESSION_DIR, 'session-state.json');
-            if (fs.existsSync(statePath)) {
-                fs.unlinkSync(statePath);
-            }
-        } catch (error) {
-            console.log('Erreur lors du nettoyage de la session');
-        }
+        cleanupSession();
         
         console.log('🛑 Connexion WhatsApp arrêtée manuellement');
         res.json({ 
@@ -265,27 +297,27 @@ app.post('/api/send', async (req, res) => {
     }
 });
 
-// Ajouter une route pour forcer la restauration
+// Route pour forcer la restauration
 app.post('/api/restore', async (req, res) => {
     try {
+        console.log('🔄 Tentative de restauration de session...');
+        
         if (!client) {
             initializeWhatsApp();
         }
         
         // Vérifier l'état de la session
         const sessionState = loadSessionState();
-        if (sessionState && sessionState.isConnected) {
-            console.log('🔄 Tentative de restauration de la session...');
-        }
         
         res.json({ 
             success: true, 
             message: 'Restauration de la session démarrée',
-            hasSession: !!sessionState
+            hasSession: !!sessionState,
+            previousState: sessionState
         });
 
     } catch (error) {
-        console.error('Erreur restauration:', error);
+        console.error('❌ Erreur restauration:', error);
         res.json({ 
             success: false, 
             error: 'Erreur lors de la restauration: ' + error.message 
@@ -293,13 +325,108 @@ app.post('/api/restore', async (req, res) => {
     }
 });
 
-// Route de santé
-app.get('/health', (req, res) => {
+// Route pour réinitialiser complètement la session
+app.post('/api/reset', async (req, res) => {
+    try {
+        console.log('🔄 Réinitialisation complète demandée...');
+        
+        if (client) {
+            await client.destroy();
+            client = null;
+        }
+        
+        isConnected = false;
+        qrCode = null;
+        connectionStatus = 'disconnected';
+        
+        // Supprimer tous les fichiers de session
+        const sessionPath = path.join(SESSION_DIR, 'masssender-client');
+        const statePath = path.join(SESSION_DIR, 'session-state.json');
+        
+        if (fs.existsSync(sessionPath)) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+            console.log('🗑️ Dossier de session supprimé');
+        }
+        
+        if (fs.existsSync(statePath)) {
+            fs.unlinkSync(statePath);
+            console.log('🗑️ Fichier d\'état supprimé');
+        }
+        
+        // Réinitialiser
+        setTimeout(() => {
+            initializeWhatsApp();
+        }, 1000);
+        
+        res.json({ 
+            success: true, 
+            message: 'Session complètement réinitialisée' 
+        });
+        
+    } catch (error) {
+        console.error('❌ Erreur réinitialisation:', error);
+        res.json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+// Route de diagnostic des sessions
+app.get('/api/debug-sessions', (req, res) => {
+    try {
+        const sessionPath = path.join(SESSION_DIR, 'masssender-client');
+        const statePath = path.join(SESSION_DIR, 'session-state.json');
+        
+        const sessionExists = fs.existsSync(sessionPath);
+        const stateExists = fs.existsSync(statePath);
+        
+        let sessionInfo = {};
+        let stateInfo = {};
+        
+        if (sessionExists) {
+            const files = fs.readdirSync(sessionPath);
+            sessionInfo = {
+                exists: true,
+                fileCount: files.length,
+                files: files
+            };
+        }
+        
+        if (stateExists) {
+            const stateContent = fs.readFileSync(statePath, 'utf8');
+            stateInfo = {
+                exists: true,
+                content: JSON.parse(stateContent)
+            };
+        }
+        
+        res.json({
+            session: sessionInfo,
+            state: stateInfo,
+            currentStatus: {
+                isConnected,
+                qrCode: !!qrCode,
+                connectionStatus
+            },
+            clientInitialized: !!client
+        });
+        
+    } catch (error) {
+        res.json({ error: error.message });
+    }
+});
+
+// Route de santé améliorée
+app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(),
         whatsapp_status: connectionStatus,
-        persistent: true
+        connected: isConnected,
+        has_qr: !!qrCode,
+        persistent: true,
+        client_initialized: !!client
     });
 });
 
@@ -321,10 +448,14 @@ const savedState = loadSessionState();
 if (savedState && savedState.isConnected) {
     console.log('🔍 Session précédente détectée, tentative de restauration...');
     connectionStatus = 'connecting';
+    isConnected = false; // Reset until confirmed
 }
-initializeWhatsApp();
+setTimeout(() => {
+    initializeWhatsApp();
+}, 2000);
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🎯 Backend WhatsApp démarré sur le port ${PORT}`);
     console.log(`💾 Sessions sauvegardées dans: ${SESSION_DIR}`);
+    console.log(`🔍 Diagnostic disponible sur: http://localhost:${PORT}/api/debug-sessions`);
 });
