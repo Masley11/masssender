@@ -17,6 +17,7 @@ let client = null;
 let qrCode = null;
 let isConnected = false;
 let connectionStatus = 'disconnected';
+let qrCodeGenerated = false;
 
 // Dossier pour sauvegarder les sessions
 const SESSION_DIR = './whatsapp-sessions';
@@ -26,55 +27,37 @@ if (!fs.existsSync(SESSION_DIR)) {
     fs.mkdirSync(SESSION_DIR, { recursive: true });
 }
 
-// Fonction pour sauvegarder l'état
-function saveSessionState() {
-    const state = {
-        isConnected,
-        connectionStatus,
-        timestamp: Date.now()
-    };
+// Fonction pour nettoyer complètement
+function cleanupSession() {
     try {
-        fs.writeFileSync(path.join(SESSION_DIR, 'session-state.json'), JSON.stringify(state));
-        console.log('💾 État de session sauvegardé');
-    } catch (error) {
-        console.log('❌ Erreur sauvegarde état:', error);
-    }
-}
-
-// Fonction pour charger l'état
-function loadSessionState() {
-    try {
+        const sessionPath = path.join(SESSION_DIR, 'masssender-client');
         const statePath = path.join(SESSION_DIR, 'session-state.json');
+        
+        if (fs.existsSync(sessionPath)) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+            console.log('🗑️ Dossier de session supprimé');
+        }
+        
         if (fs.existsSync(statePath)) {
-            const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-            // Vérifier si la session n'est pas trop vieille (max 24h)
-            if (Date.now() - state.timestamp < 24 * 60 * 60 * 1000) {
-                console.log('📁 État de session chargé:', state);
-                return state;
-            } else {
-                console.log('🗑️ Session expirée');
-            }
+            fs.unlinkSync(statePath);
+            console.log('🗑️ Fichier d\'état supprimé');
         }
     } catch (error) {
-        console.log('❌ Aucun état de session valide trouvé');
+        console.log('❌ Erreur nettoyage:', error);
     }
-    return null;
 }
 
-// Configuration du client WhatsApp
+// Configuration du client WhatsApp - VERSION SIMPLIFIÉE
 function initializeWhatsApp() {
     console.log('🔄 Initialisation de WhatsApp...');
     
-    // Vérifier l'état de la session avant d'initialiser
-    const sessionPath = path.join(SESSION_DIR, 'masssender-client');
-    const sessionExists = fs.existsSync(sessionPath);
-    
-    console.log('📁 Session existante:', sessionExists);
-    
-    // Nettoyer si le client existe déjà
+    // Nettoyer l'ancien client
     if (client) {
-        console.log('🛑 Nettoyage du client précédent...');
-        client.destroy().catch(() => {});
+        try {
+            client.destroy();
+        } catch (e) {
+            console.log('⚠️ Erreur lors de la destruction du client précédent:', e.message);
+        }
         client = null;
     }
 
@@ -92,95 +75,85 @@ function initializeWhatsApp() {
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-gpu',
-                '--single-process'
+                '--disable-gpu'
             ]
         },
-        restartOnAuthFail: true,
-        takeoverOnConflict: false, // IMPORTANT: Éviter les conflits
-        takeoverTimeoutMs: 5000
+        // Options critiques pour éviter les conflits
+        restartOnAuthFail: false,
+        takeoverOnConflict: false
     });
 
-    // Génération du QR Code
+    // Événement QR Code - SIMPLIFIÉ
     client.on('qr', (qr) => {
+        console.log('📱 NOUVEAU QR Code reçu');
         qrCode = qr;
+        qrCodeGenerated = true;
         connectionStatus = 'waiting_qr';
         isConnected = false;
-        console.log('📱 QR Code reçu - Scannez pour vous connecter');
+        
+        // Afficher dans la console
         qrcode.generate(qr, { small: true });
-        saveSessionState();
+        console.log('✅ QR Code affiché - En attente du scan...');
     });
 
-    // Connexion réussie
+    // Événement READY - CRITIQUE
     client.on('ready', () => {
+        console.log('🎉 ✅ ÉVÉNEMENT READY DÉCLENCHÉ - WhatsApp connecté avec succès!');
         isConnected = true;
         qrCode = null;
+        qrCodeGenerated = false;
         connectionStatus = 'connected';
-        console.log('✅ WhatsApp connecté avec succès!');
-        console.log('🎯 Session active sauvegardée dans:', sessionPath);
-        saveSessionState();
+        
+        console.log('📱 Session WhatsApp active et fonctionnelle');
     });
 
-    // Authentification réussie
+    // Événement AUTHENTICATED
     client.on('authenticated', () => {
         console.log('🔐 Authentification réussie - Session sauvegardée');
-        saveSessionState();
+        // Ne pas mettre à jour isConnected ici, attendre 'ready'
     });
 
-    // Déconnexion
+    // Événement DISCONNECTED
     client.on('disconnected', (reason) => {
+        console.log('❌ WhatsApp déconnecté:', reason);
         isConnected = false;
         qrCode = null;
         connectionStatus = 'disconnected';
-        console.log('❌ WhatsApp déconnecté:', reason);
         
-        // Nettoyer la session
-        cleanupSession();
-        
-        // Reconnexion automatique après 5 secondes
+        // Nettoyer et redémarrer après délai
         setTimeout(() => {
-            console.log('🔄 Tentative de reconnexion automatique...');
+            console.log('🔄 Reconnexion automatique...');
+            cleanupSession();
             initializeWhatsApp();
-            client.initialize().catch(error => {
-                console.log('❌ Erreur lors de la réinitialisation:', error);
-            });
+            client.initialize().catch(console.error);
         }, 5000);
     });
 
-    // Erreurs
+    // Événement AUTH FAILURE
     client.on('auth_failure', (error) => {
-        console.log('❌ Échec de l\'authentification:', error);
+        console.log('❌ Échec authentification:', error);
         connectionStatus = 'error';
         isConnected = false;
         cleanupSession();
-        saveSessionState();
     });
 
-    // Erreur générale
-    client.on('error', (error) => {
-        console.log('❌ Erreur WhatsApp:', error);
-        connectionStatus = 'error';
-        saveSessionState();
+    // Événement CHANGE STATE
+    client.on('change_state', (state) => {
+        console.log('🔄 Changement d\'état:', state);
+    });
+
+    // Événement LOADING SCREEN
+    client.on('loading_screen', (percent, message) => {
+        console.log(`📱 Écran de chargement: ${percent}% - ${message}`);
     });
 
     // Initialiser le client
-    client.initialize().catch(error => {
-        console.log('❌ Erreur lors de l\'initialisation:', error);
-        connectionStatus = 'error';
-        saveSessionState();
-    });
-}
-
-// Nettoyage de session
-function cleanupSession() {
     try {
-        const statePath = path.join(SESSION_DIR, 'session-state.json');
-        if (fs.existsSync(statePath)) {
-            fs.unlinkSync(statePath);
-            console.log('🗑️ Fichier d\'état supprimé');
-        }
+        client.initialize();
+        console.log('🎯 Client WhatsApp initialisé');
     } catch (error) {
-        console.log('❌ Erreur lors du nettoyage:', error);
+        console.log('❌ Erreur initialisation client:', error);
+        connectionStatus = 'error';
     }
 }
 
@@ -192,19 +165,13 @@ app.get('/api/status', (req, res) => {
         status: connectionStatus,
         message: getStatusMessage(connectionStatus),
         persistent: true,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        qr_generated: qrCodeGenerated
     });
 });
 
 app.post('/api/start', async (req, res) => {
     try {
-        if (client && connectionStatus === 'waiting_qr') {
-            return res.json({ 
-                success: false, 
-                error: 'En attente du scan du QR Code' 
-            });
-        }
-
         if (isConnected) {
             return res.json({ 
                 success: false, 
@@ -240,6 +207,7 @@ app.post('/api/stop', async (req, res) => {
         isConnected = false;
         qrCode = null;
         connectionStatus = 'disconnected';
+        qrCodeGenerated = false;
         
         cleanupSession();
         
@@ -297,35 +265,45 @@ app.post('/api/send', async (req, res) => {
     }
 });
 
-// Route pour forcer la restauration
-app.post('/api/restore', async (req, res) => {
+// NOUVELLE ROUTE : Forcer un nouveau QR Code
+app.post('/api/refresh-qr', async (req, res) => {
     try {
-        console.log('🔄 Tentative de restauration de session...');
+        console.log('🔄 Régénération du QR Code demandée...');
         
-        if (!client) {
-            initializeWhatsApp();
+        if (client) {
+            await client.destroy();
+            client = null;
         }
         
-        // Vérifier l'état de la session
-        const sessionState = loadSessionState();
+        // Nettoyer complètement
+        cleanupSession();
+        
+        // Réinitialiser l'état
+        isConnected = false;
+        qrCode = null;
+        connectionStatus = 'disconnected';
+        qrCodeGenerated = false;
+        
+        // Redémarrer
+        setTimeout(() => {
+            initializeWhatsApp();
+        }, 1000);
         
         res.json({ 
             success: true, 
-            message: 'Restauration de la session démarrée',
-            hasSession: !!sessionState,
-            previousState: sessionState
+            message: 'QR Code régénéré avec succès' 
         });
-
+        
     } catch (error) {
-        console.error('❌ Erreur restauration:', error);
+        console.error('❌ Erreur refresh QR:', error);
         res.json({ 
             success: false, 
-            error: 'Erreur lors de la restauration: ' + error.message 
+            error: error.message 
         });
     }
 });
 
-// Route pour réinitialiser complètement la session
+// Route pour réinitialiser complètement
 app.post('/api/reset', async (req, res) => {
     try {
         console.log('🔄 Réinitialisation complète demandée...');
@@ -335,28 +313,19 @@ app.post('/api/reset', async (req, res) => {
             client = null;
         }
         
+        // Nettoyer COMPLÈTEMENT
+        cleanupSession();
+        
+        // Réinitialiser l'état
         isConnected = false;
         qrCode = null;
         connectionStatus = 'disconnected';
+        qrCodeGenerated = false;
         
-        // Supprimer tous les fichiers de session
-        const sessionPath = path.join(SESSION_DIR, 'masssender-client');
-        const statePath = path.join(SESSION_DIR, 'session-state.json');
-        
-        if (fs.existsSync(sessionPath)) {
-            fs.rmSync(sessionPath, { recursive: true, force: true });
-            console.log('🗑️ Dossier de session supprimé');
-        }
-        
-        if (fs.existsSync(statePath)) {
-            fs.unlinkSync(statePath);
-            console.log('🗑️ Fichier d\'état supprimé');
-        }
-        
-        // Réinitialiser
+        // Redémarrer après un délai
         setTimeout(() => {
             initializeWhatsApp();
-        }, 1000);
+        }, 2000);
         
         res.json({ 
             success: true, 
@@ -372,18 +341,13 @@ app.post('/api/reset', async (req, res) => {
     }
 });
 
-// Route de diagnostic des sessions
+// Route de diagnostic
 app.get('/api/debug-sessions', (req, res) => {
     try {
         const sessionPath = path.join(SESSION_DIR, 'masssender-client');
-        const statePath = path.join(SESSION_DIR, 'session-state.json');
-        
         const sessionExists = fs.existsSync(sessionPath);
-        const stateExists = fs.existsSync(statePath);
         
         let sessionInfo = {};
-        let stateInfo = {};
-        
         if (sessionExists) {
             const files = fs.readdirSync(sessionPath);
             sessionInfo = {
@@ -393,23 +357,15 @@ app.get('/api/debug-sessions', (req, res) => {
             };
         }
         
-        if (stateExists) {
-            const stateContent = fs.readFileSync(statePath, 'utf8');
-            stateInfo = {
-                exists: true,
-                content: JSON.parse(stateContent)
-            };
-        }
-        
         res.json({
             session: sessionInfo,
-            state: stateInfo,
             currentStatus: {
                 isConnected,
                 qrCode: !!qrCode,
-                connectionStatus
-            },
-            clientInitialized: !!client
+                connectionStatus,
+                qrCodeGenerated,
+                clientInitialized: !!client
+            }
         });
         
     } catch (error) {
@@ -417,7 +373,7 @@ app.get('/api/debug-sessions', (req, res) => {
     }
 });
 
-// Route de santé améliorée
+// Route de santé
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'ok', 
@@ -425,8 +381,7 @@ app.get('/api/health', (req, res) => {
         whatsapp_status: connectionStatus,
         connected: isConnected,
         has_qr: !!qrCode,
-        persistent: true,
-        client_initialized: !!client
+        qr_generated: qrCodeGenerated
     });
 });
 
@@ -442,20 +397,20 @@ function getStatusMessage(status) {
     return messages[status] || 'Statut inconnu';
 }
 
-// Au démarrage, essayer de restaurer la session
-console.log('🚀 Initialisation du backend WhatsApp...');
-const savedState = loadSessionState();
-if (savedState && savedState.isConnected) {
-    console.log('🔍 Session précédente détectée, tentative de restauration...');
-    connectionStatus = 'connecting';
-    isConnected = false; // Reset until confirmed
-}
+// Démarrage initial
+console.log('🚀 Démarrage du backend WhatsApp...');
+console.log('📁 Dossier sessions:', SESSION_DIR);
+
+// Nettoyer au démarrage pour éviter les conflits
+cleanupSession();
+
+// Démarrer WhatsApp après un court délai
 setTimeout(() => {
     initializeWhatsApp();
-}, 2000);
+}, 3000);
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🎯 Backend WhatsApp démarré sur le port ${PORT}`);
-    console.log(`💾 Sessions sauvegardées dans: ${SESSION_DIR}`);
-    console.log(`🔍 Diagnostic disponible sur: http://localhost:${PORT}/api/debug-sessions`);
+    console.log(`🔍 Diagnostic: http://localhost:${PORT}/api/debug-sessions`);
+    console.log(`❤️  Santé: http://localhost:${PORT}/api/health`);
 });

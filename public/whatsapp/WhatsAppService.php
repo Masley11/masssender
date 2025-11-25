@@ -50,6 +50,14 @@ class WhatsAppService {
     }
     
     /**
+     * Force une nouvelle génération de QR Code
+     * @return array
+     */
+    public function refreshQR() {
+        return $this->callAPI('/api/refresh-qr', 'POST');
+    }
+    
+    /**
      * Envoie un message WhatsApp
      * @param string $phone Numéro de téléphone
      * @param string $message Message à envoyer
@@ -75,14 +83,7 @@ class WhatsAppService {
      * @return array
      */
     public function getStatus() {
-        $status = $this->callAPI('/api/status', 'GET');
-        
-        // Si déconnecté mais qu'une session existe, tenter une restauration
-        if (!$status['connected'] && ($status['persistent'] ?? false)) {
-            $this->restoreConnection();
-        }
-        
-        return $status;
+        return $this->callAPI('/api/status', 'GET');
     }
     
     /**
@@ -148,7 +149,7 @@ class WhatsAppService {
                     'success' => false,
                     'error' => 'Réponse invalide du serveur',
                     'details' => json_last_error_msg(),
-                    'raw_response' => $response
+                    'raw_response' => substr($response, 0, 200)
                 ];
             }
             
@@ -193,23 +194,6 @@ class WhatsAppService {
     public function validatePhone($phone) {
         $cleanPhone = $this->formatPhone($phone);
         return !empty($cleanPhone) && strlen($cleanPhone) >= 8 && strlen($cleanPhone) <= 12;
-    }
-    
-    /**
-     * Récupère les informations de session détaillées
-     * @return array
-     */
-    public function getSessionInfo() {
-        $debugInfo = $this->getDebugInfo();
-        $status = $this->getStatus();
-        $health = $this->getHealthStatus();
-        
-        return [
-            'debug' => $debugInfo,
-            'status' => $status,
-            'health' => $health,
-            'backend_url' => $this->apiUrl
-        ];
     }
 }
 ?>
