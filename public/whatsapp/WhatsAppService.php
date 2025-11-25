@@ -18,6 +18,14 @@ class WhatsAppService {
     }
     
     /**
+     * Restaure la session WhatsApp existante
+     * @return array
+     */
+    public function restoreConnection() {
+        return $this->callAPI('/api/restore', 'POST');
+    }
+    
+    /**
      * Arrête la connexion WhatsApp
      * @return array
      */
@@ -51,7 +59,14 @@ class WhatsAppService {
      * @return array
      */
     public function getStatus() {
-        return $this->callAPI('/api/status', 'GET');
+        $status = $this->callAPI('/api/status', 'GET');
+        
+        // Si déconnecté mais qu'une session existe, tenter une restauration
+        if (!$status['connected'] && $status['persistent']) {
+            $this->restoreConnection();
+        }
+        
+        return $status;
     }
     
     /**
