@@ -64,9 +64,7 @@ function initializeDatabase($pdo) {
             phone TEXT,
             status TEXT,
             error_message TEXT,
-            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
-            FOREIGN KEY (contact_id) REFERENCES contacts(id)
+            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ");
     
@@ -100,6 +98,17 @@ function getTotalContactsCount($pdo) {
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM contacts");
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     return $row['count'] ?? 0;
+}
+
+function getCompletedCampaignsCount($pdo) {
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) as count FROM campaigns WHERE status = 'completed'");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row['count'] ?? 0;
+    } catch (Exception $e) {
+        error_log("Erreur comptage campagnes: " . $e->getMessage());
+        return 0;
+    }
 }
 
 function sendBulkMessages($pdo, $message) {
@@ -266,63 +275,68 @@ function simulateWhatsAppSend($phone, $message) {
 }
 
 function displayMessageHistory($pdo) {
-    $stmt = $pdo->query("
-        SELECT c.*, 
-               (SELECT COUNT(*) FROM message_logs WHERE campaign_id = c.id AND status = 'sent') as success_count,
-               (SELECT COUNT(*) FROM message_logs WHERE campaign_id = c.id AND status = 'failed') as failed_count
-        FROM campaigns c 
-        ORDER BY c.created_at DESC 
-        LIMIT 10
-    ");
-    
-    $hasHistory = false;
-    
-    while ($campaign = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if (!$hasHistory) {
-            echo '<div class="table-responsive">';
-            echo '<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">';
-            echo '<thead><tr style="background: #f4f4f4;">';
-            echo '<th style="padding: 12px; text-align: left;">Date</th>';
-            echo '<th style="padding: 12px; text-align: left;">Message</th>';
-            echo '<th style="padding: 12px; text-align: left;">Statut</th>';
-            echo '<th style="padding: 12px; text-align: left;">Résultats</th>';
-            echo '<th style="padding: 12px; text-align: left;">Détails</th>';
-            echo '</tr></thead><tbody>';
-            $hasHistory = true;
+    try {
+        $stmt = $pdo->query("
+            SELECT c.*, 
+                   (SELECT COUNT(*) FROM message_logs ml WHERE ml.campaign_id = c.id AND ml.status = 'sent') as success_count,
+                   (SELECT COUNT(*) FROM message_logs ml WHERE ml.campaign_id = c.id AND ml.status = 'failed') as failed_count
+            FROM campaigns c 
+            ORDER BY c.created_at DESC 
+            LIMIT 10
+        ");
+        
+        $hasHistory = false;
+        
+        while ($campaign = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if (!$hasHistory) {
+                echo '<div class="table-responsive">';
+                echo '<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">';
+                echo '<thead><tr style="background: #f4f4f4;">';
+                echo '<th style="padding: 12px; text-align: left;">Date</th>';
+                echo '<th style="padding: 12px; text-align: left;">Message</th>';
+                echo '<th style="padding: 12px; text-align: left;">Statut</th>';
+                echo '<th style="padding: 12px; text-align: left;">Résultats</th>';
+                echo '<th style="padding: 12px; text-align: left;">Détails</th>';
+                echo '</tr></thead><tbody>';
+                $hasHistory = true;
+            }
+            
+            $date = date('d/m/Y H:i', strtotime($campaign['created_at']));
+            $messagePreview = strlen($campaign['message']) > 50 
+                ? substr($campaign['message'], 0, 50) . '...' 
+                : $campaign['message'];
+            
+            // Couleur selon le statut
+            $statusConfig = [
+                'completed' => ['color' => '#27ae60', 'icon' => '✅'],
+                'partial' => ['color' => '#f39c12', 'icon' => '⚠️'],
+                'failed' => ['color' => '#e74c3c', 'icon' => '❌'],
+                'sending' => ['color' => '#3498db', 'icon' => '⏳'],
+                'draft' => ['color' => '#95a5a6', 'icon' => '📝']
+            ];
+            
+            $statusInfo = $statusConfig[$campaign['status']] ?? $statusConfig['draft'];
+            
+            echo "<tr>";
+            echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>{$date}</td>";
+            echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;' title='" . htmlspecialchars($campaign['message']) . "'>{$messagePreview}</td>";
+            echo "<td style='padding: 12px; border-bottom: 1px solid #ddd; color: {$statusInfo['color']};'>{$statusInfo['icon']} " . ucfirst($campaign['status']) . "</td>";
+            echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>{$campaign['sent_count']}/{$campaign['total_contacts']}</td>";
+            echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>";
+            if ($campaign['success_count'] > 0) echo "✅ {$campaign['success_count']} ";
+            if ($campaign['failed_count'] > 0) echo "❌ {$campaign['failed_count']}";
+            echo "</td>";
+            echo "</tr>";
         }
         
-        $date = date('d/m/Y H:i', strtotime($campaign['created_at']));
-        $messagePreview = strlen($campaign['message']) > 50 
-            ? substr($campaign['message'], 0, 50) . '...' 
-            : $campaign['message'];
-        
-        // Couleur selon le statut
-        $statusConfig = [
-            'completed' => ['color' => '#27ae60', 'icon' => '✅'],
-            'partial' => ['color' => '#f39c12', 'icon' => '⚠️'],
-            'failed' => ['color' => '#e74c3c', 'icon' => '❌'],
-            'sending' => ['color' => '#3498db', 'icon' => '⏳'],
-            'draft' => ['color' => '#95a5a6', 'icon' => '📝']
-        ];
-        
-        $statusInfo = $statusConfig[$campaign['status']] ?? $statusConfig['draft'];
-        
-        echo "<tr>";
-        echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>{$date}</td>";
-        echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;' title='" . htmlspecialchars($campaign['message']) . "'>{$messagePreview}</td>";
-        echo "<td style='padding: 12px; border-bottom: 1px solid #ddd; color: {$statusInfo['color']};'>{$statusInfo['icon']} " . ucfirst($campaign['status']) . "</td>";
-        echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>{$campaign['sent_count']}/{$campaign['total_contacts']}</td>";
-        echo "<td style='padding: 12px; border-bottom: 1px solid #ddd;'>";
-        if ($campaign['success_count'] > 0) echo "✅ {$campaign['success_count']} ";
-        if ($campaign['failed_count'] > 0) echo "❌ {$campaign['failed_count']}";
-        echo "</td>";
-        echo "</tr>";
-    }
-    
-    if ($hasHistory) {
-        echo '</tbody></table></div>';
-    } else {
-        echo '<div class="alert alert-info">📝 Aucun historique d\'envoi pour le moment.</div>';
+        if ($hasHistory) {
+            echo '</tbody></table></div>';
+        } else {
+            echo '<div class="alert alert-info">📝 Aucun historique d\'envoi pour le moment.</div>';
+        }
+    } catch (Exception $e) {
+        echo '<div class="alert alert-error">❌ Erreur lors du chargement de l\'historique: ' . htmlspecialchars($e->getMessage()) . '</div>';
+        error_log("Erreur affichage historique: " . $e->getMessage());
     }
 }
 ?>
@@ -454,6 +468,12 @@ function displayMessageHistory($pdo) {
             font-size: 14px;
             color: #7f8c8d;
         }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
@@ -473,11 +493,7 @@ function displayMessageHistory($pdo) {
                     <div class="stat-label">Contacts actifs</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number"><?php 
-                        $stmt = $pdo->query("SELECT COUNT(DISTINCT campaign_id) as count FROM campaigns WHERE status = 'completed'");
-                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                        echo $row['count'] ?? 0;
-                    ?></div>
+                    <div class="stat-number"><?php echo getCompletedCampaignsCount($pdo); ?></div>
                     <div class="stat-label">Campagnes terminées</div>
                 </div>
             </div>
